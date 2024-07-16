@@ -1,0 +1,404 @@
+import random
+from collections import defaultdict
+import copy
+
+
+class Chromosome:
+    def __init__(self, production_data):
+        self.production_data = production_data
+        self.testing_workstations = self.create_workstations("TW")
+        self.disassembly_workstations = self.create_workstations("DW")
+        self.assembling_workstations = self.create_workstations("AW")
+        self.reprocessing_operations = production_data.reprocessing_operations
+        self.component_operations = production_data.component_operations
+        self.components_operation_times = {
+            "RW1": {},
+            "RW2": {},
+            "RW3": {},
+            "RW4": {},
+            "RW5": {},
+            "RW6": {},
+            "RW7": {},
+            "RW8": {},
+            "RW9": {}
+        }
+        self.operation_times = defaultdict(dict)
+        self.start_times = defaultdict(dict)
+        self.end_times = defaultdict(dict)
+        self.testing_assignments = {}  
+        self.disassembling_assignments = {}  
+        self.assembling_assignments = {}  
+        self.workstation_schedules = {
+            "Testing": {},
+            "Disassembling": {},
+            "Assembling": {}
+        }
+         
+        self.testing_assignments = defaultdict(list)
+        self.disassembling_assignments = defaultdict(list)
+        self.assembling_assignments = defaultdict(list)
+
+    def create_workstations(self, ws_prefix):
+        count = self.production_data.number_of_machines[ws_prefix]
+        return [f"{ws_prefix}{i}" for i in range(1, count + 1)]
+#------------Ici pour chaque workstatin je donne a random real number--------------------------
+    def get_random_numbers_for_workstations(self, product, workstations, random_numbers_table):
+        workstation_numbers = {}
+        row = [product]
+        for ws in workstations:
+            random_number = random.uniform(-10, 10)
+            workstation_numbers[ws] = random_number
+            row.append(random_number)
+        random_numbers_table.append(row)
+        return workstation_numbers
+
+#------------Ici j' attribue les pdts à leurs workstations-------------------------------------
+    def assign_workstations(self):
+        num_testing_machines = self.production_data.number_of_machines["TW"]
+        num_disassembling_machines = self.production_data.number_of_machines["DW"]
+        num_assembling_machines = self.production_data.number_of_machines["AW"]
+
+        self.manufactured_testing_workstations = [f"TW{(i % num_testing_machines) + 1}" for i in range(self.production_data.man_product['demand'])]
+        self.manufactured_assembling_workstations = [f"AW{(i % num_assembling_machines) + 1}" for i in range(self.production_data.man_product['demand'])]
+
+        self.remanufactured_testing_workstations = [f"TW{(i % num_testing_machines) + 1}" for i in range(self.production_data.reman_product['demand'])]
+        self.remanufactured_disassembling_workstations = [f"DW{(i % num_disassembling_machines) + 1}" for i in range(self.production_data.reman_product['demand'])]
+        self.remanufactured_assembling_workstations = [f"AW{(i % num_assembling_machines) + 1}" for i in range(self.production_data.reman_product['demand'])]
+
+#------------Générer le tableau qui contient les randoms real number et choisi le max pour Chosen workstation-------------------------------------
+    def assign_order(self, product_type, product_demand, workstations, prefix):
+        products = defaultdict(list)
+        random_numbers_table = []
+
+        for i in range(product_demand):
+            product_name = f"{product_type} Product {i + 1}"
+            random_numbers = self.get_random_numbers_for_workstations(product_name, workstations, random_numbers_table)
+            best_workstation = max(random_numbers, key=random_numbers.get)
+            random_numbers_table[-1].append(f"{prefix}{workstations.index(best_workstation) + 1}")
+            products[best_workstation].append({
+                "type": product_type.lower(),
+                "product": product_name,
+                "random_number": random_numbers[best_workstation],  # le max ici je le choisi pour l'attribuer au workstation
+                "random_numbers": random_numbers  # Ajouter tous les numéros aléatoires
+            })
+
+        return products, random_numbers_table
+
+#------------Le tableau intial générer pour chaque workstation-------------------------------------
+
+    def print_initial_table(self, random_numbers_table, workstations, prefix):
+        header = ["Product"] + [f"{prefix}{i+1}" for i in range(len(workstations))] + [f"Chosen {prefix}"]
+        print(f"{header[0]:<25} " + " ".join([f"{h:<10}" for h in header[1:]]))
+
+        for row in random_numbers_table:
+            formatted_row = [f"{item:.2f}" if isinstance(item, float) else item for item in row]
+            print(" ".join([f"{formatted_row[i]:<25}" if i == 0 else f"{formatted_row[i]:<10}" for i in range(len(formatted_row))]))
+
+    def final_sequencing(self, random_numbers_table, workstations, prefix):
+        self.print_initial_table(random_numbers_table, workstations, prefix)
+       
+    def assign_testing_order(self):
+        products_m, random_numbers_table_m = self.assign_order("Manufactured", self.production_data.man_product['demand'], self.testing_workstations, "TW")
+        products_r, random_numbers_table_r = self.assign_order("Remanufactured", self.production_data.reman_product['demand'], self.testing_workstations, "TW")
+        random_numbers_table = random_numbers_table_m + random_numbers_table_r
+
+        # Store assignments in self.testing_assignments
+        for workstation, product_list in products_m.items():
+            self.testing_assignments[workstation].extend(product_list)
+        for workstation, product_list in products_r.items():
+            self.testing_assignments[workstation].extend(product_list)
+
+        return products_m, products_r, random_numbers_table
+
+    def assign_assembling_order(self):
+        products_m, random_numbers_table_m = self.assign_order("Manufactured", self.production_data.man_product['demand'], self.assembling_workstations, "AW")
+        products_r, random_numbers_table_r = self.assign_order("Remanufactured", self.production_data.reman_product['demand'], self.assembling_workstations, "AW")
+        random_numbers_table = random_numbers_table_m + random_numbers_table_r
+
+        # Store assignments in self.assembling_assignments
+        for workstation, product_list in products_m.items():
+            self.assembling_assignments[workstation].extend(product_list)
+        for workstation, product_list in products_r.items():
+            self.assembling_assignments[workstation].extend(product_list)
+
+        return products_m, products_r, random_numbers_table
+
+    def assign_disassembling_order(self):
+        products, random_numbers_table = self.assign_order("Remanufactured", self.production_data.reman_product['demand'], self.disassembly_workstations, "DW")
+
+        # Store assignments in self.disassembling_assignments
+        for workstation, product_list in products.items():
+            self.disassembling_assignments[workstation].extend(product_list)
+
+        return products, random_numbers_table
+    
+    def assign_component_operations_to_rws(self):
+        operation_dict = {op: [] for op in self.production_data.reprocessing_operations.keys()}
+        rw_assignments = defaultdict(list)
+        output_string = "Component Operations Assignment:\n"
+        output_string += "{:<15} {:<20} ".format("Component", "Operation")
+
+        all_rws = set(rw for rws in self.production_data.reprocessing_operations.values() for rw in rws)
+        rw_columns = list(all_rws)
+
+        for rw_name in rw_columns:
+            output_string += f"{rw_name:<10}"
+        output_string += " Chosen RW \n"
+
+        output_string += "=" * (15 + 20 + 10 * len(rw_columns) + 10) + "\n"
+
+        for product_operations in self.component_operations:
+            product_index = product_operations["product_index"]
+            component_index = 1  # Start component index at 1 for each product
+
+            for component_operations_dict in product_operations["operations"]:
+                for component_name, operations_dict in component_operations_dict.items():
+                    component_id = f"C{product_index}{component_index}"  # Format component ID as C{product_index}{component_index}
+                    component_index += 1  # Increment component index
+
+                    for operation_name, operation_duration in operations_dict.items():
+                        if operation_name in self.production_data.reprocessing_operations:
+                            rw_random_numbers = {rw: None for rw in rw_columns}
+                            for rw_name in self.production_data.reprocessing_operations[operation_name]:
+                                rw_random_numbers[rw_name] = random.uniform(0, 10)
+
+                            chosen_rw = max(rw_random_numbers, key=lambda x: (rw_random_numbers[x] if rw_random_numbers[x] is not None else -float('inf')))
+
+                            operation_dict[operation_name].append({
+                                "component_id": component_id,
+                                "operation_name": operation_name,
+                                "rw_random_numbers": rw_random_numbers,
+                                "chosen_rw": chosen_rw
+                            })
+
+                            rw_assignments[chosen_rw].append({
+                                "component_id": component_id,
+                                "operation_name": operation_name,
+                                "random_number": rw_random_numbers[chosen_rw],
+                                "duration": operation_duration  # Add duration here
+                            })
+
+                            output_string += f"{component_id:<15} {operation_name:<20} "
+                            for rw_name in rw_columns:
+                                if rw_name in rw_random_numbers and rw_random_numbers[rw_name] is not None:
+                                    output_string += f"{rw_random_numbers[rw_name]:<10.2f}"
+                                else:
+                                    output_string += f"{'-':<10}"
+                            output_string += f" {chosen_rw if rw_random_numbers[chosen_rw] is not None else '-':<10}\n"
+                        else:
+                            print(f"Operation '{operation_name}' not found in reprocessing_operations.")
+
+        return rw_assignments, output_string
+ 
+    def get_component_assignments(self):
+        rw_assignments, _ = self.assign_component_operations_to_rws()
+
+        # Sort components within each workstation assignment by random_number in descending order
+        sorted_rw_assignments = copy.deepcopy(rw_assignments)  # Make a deep copy to preserve original
+
+        for rw, components in sorted_rw_assignments.items():
+            components.sort(key=lambda x: x['random_number'], reverse=True)
+
+        return sorted_rw_assignments
+
+#------------Ici j'ai fait le sorting-------------------------------------
+
+    def get_workstation_assignments(self):
+        # ici j'ai appeler les produits assigned to the same workstation dict{key=ws:value:list of product}
+        testing_assignments_dict = {ws: list(self.testing_assignments[ws]) for ws in self.testing_assignments}
+        disassembling_assignments_dict = {ws: list(self.disassembling_assignments[ws]) for ws in self.disassembling_assignments}
+        assembling_assignments_dict = {ws: list(self.assembling_assignments[ws]) for ws in self.assembling_assignments}
+
+        # Ici je fais le sorting des valeurs de la liste-------
+        for assignments_dict in [testing_assignments_dict, disassembling_assignments_dict, assembling_assignments_dict]:
+            for workstation in assignments_dict:
+                assignments_dict[workstation].sort(key=lambda x: x['random_number'], reverse=True)
+
+        workstation_assignments = {
+            "Testing Workstations": testing_assignments_dict,
+            "Disassembling Workstations": disassembling_assignments_dict,
+            "Assembling Workstations": assembling_assignments_dict,
+        }
+
+        return workstation_assignments
+
+#------------Ici je fais le calcul des durées-------------------------------------
+    def calculate_profit(self):
+            man_demand = self.production_data.man_product['demand']
+            man_price = self.production_data.man_product['price']
+            man_cost = self.production_data.manufacturing_cost
+
+            reman_demand = self.production_data.reman_product['demand']
+            reman_price = self.production_data.reman_product['price']
+            reman_costs = self.production_data.costreman
+
+            manufactured_profit = man_demand * (man_price - man_cost)
+            remanufactured_profit = (reman_price * reman_demand) - sum(reman_costs)
+            total_profit = manufactured_profit + remanufactured_profit
+            
+            print(f"Manufactured Profit: {manufactured_profit:.2f}")
+            print(f"Remanufactured Profit: {remanufactured_profit:.2f}")
+            print(f"Total Profit: {total_profit:.2f}")
+    def calculate_operation_times(self):
+        # Convert defaultdict to regular dictionaries for safe handling
+        testing_assignments_dict = {ws: list(self.testing_assignments[ws]) for ws in self.testing_assignments}
+        disassembling_assignments_dict = {ws: list(self.disassembling_assignments[ws]) for ws in self.disassembling_assignments}
+        assembling_assignments_dict = {ws: list(self.assembling_assignments[ws]) for ws in self.assembling_assignments}
+
+        # Initialize dictionaries to store start and end times
+        self.operation_times = defaultdict(dict)
+
+        # Initialize workstation availability
+        workstation_availability = defaultdict(lambda: 0.0)
+
+        # Initialize each type of workstation in operation_times if not already initialized
+        for workstation_type in ["Testing Workstations", "Disassembling Workstations", "Assembling Workstations"]:
+            if workstation_type not in self.operation_times:
+                self.operation_times[workstation_type] = {}
+
+        # Sort products by random number and type
+        for assignments_dict in [assembling_assignments_dict, testing_assignments_dict, disassembling_assignments_dict]:
+            for workstation in assignments_dict:
+                if assignments_dict is assembling_assignments_dict:
+                    assignments_dict[workstation].sort(key=lambda x: x['random_number'], reverse=True)
+                elif assignments_dict is testing_assignments_dict:
+                    manufactured_products = [p for p in assignments_dict[workstation] if p['type'] == 'Manufactured']
+                    remanufactured_products = [p for p in assignments_dict[workstation] if p['type'] == 'Remanufactured']
+                    manufactured_products.sort(key=lambda x: x['random_number'], reverse=True)
+                    remanufactured_products.sort(key=lambda x: x['random_number'], reverse=True)
+                    assignments_dict[workstation] = manufactured_products + remanufactured_products
+                elif assignments_dict is disassembling_assignments_dict:
+                    assignments_dict[workstation].sort(key=lambda x: x['random_number'], reverse=True)
+
+        # Calculate operation times for Testing Workstations
+        for workstation, products in testing_assignments_dict.items():
+            current_time = 0
+            self.operation_times["Testing Workstations"][workstation] = {}
+            for product in products:
+                product_name = product['product']
+                if product['type'] == 'Manufactured':
+                    operation_time = self.production_data.manufacturing_duration['testing']
+                else:  # Remanufactured
+                    operation_time = self.production_data.Remantesting_duration
+
+                self.operation_times["Testing Workstations"][workstation][product_name] = {
+                    'start': current_time,
+                    'end': current_time + operation_time
+                }
+                current_time += operation_time
+
+        # Calculate operation times for Disassembling Workstations
+        for workstation, products in disassembling_assignments_dict.items():
+            current_time = 0
+            self.operation_times["Disassembling Workstations"][workstation] = {}
+            for product in products:
+                product_name = product['product']
+                # Start disassembling after testing finishes
+                if workstation in self.operation_times["Testing Workstations"]:
+                    start_time = max(workstation_availability[workstation], self.operation_times["Testing Workstations"][workstation][product_name]['end'])
+                else:
+                    start_time = workstation_availability[workstation]
+
+                operation_time = self.production_data.disassembly_durations[0]
+
+                self.operation_times["Disassembling Workstations"][workstation][product_name] = {
+                    'start': start_time,
+                    'end': start_time + operation_time
+                }
+                workstation_availability[workstation] = start_time + operation_time
+
+        # Calculate operation times for Assembling Workstations
+        for workstation, products in assembling_assignments_dict.items():
+            current_time = 0
+            self.operation_times["Assembling Workstations"][workstation] = {}
+            remanufactured_start_time = {}
+
+            # First pass: determine start times for remanufactured products in assembling assignments
+            for product in products:
+                product_name = product['product']
+                if product['type'] == 'Remanufactured' and product_name not in remanufactured_start_time:
+                    remanufactured_start_time[product_name] = current_time
+                current_time += self.production_data.assembling_durations[0]  # Adjust as per your data structure
+
+            # Second pass: calculate operation times, adjusting start times for remanufactured products
+            for product in products:
+                product_name = product['product']
+                operation_time = self.production_data.assembling_durations[0]  # Adjust as per your data structure
+                start_time = remanufactured_start_time.get(product_name, current_time)
+
+                self.operation_times["Assembling Workstations"][workstation][product_name] = {
+                    'start': max(start_time, workstation_availability[workstation]),
+                    'end': max(start_time, workstation_availability[workstation]) + operation_time
+                }
+                workstation_availability[workstation] = max(start_time, workstation_availability[workstation]) + operation_time
+                current_time += operation_time
+
+        # Print operation times after calculation
+        self.print_operation_times()
+
+    def print_operation_times(self):
+        for workstation_type, workstations in self.operation_times.items():
+            print(f"{workstation_type}:")
+            for workstation, products in workstations.items():
+                print(f"  {workstation}:")
+                for product_name, times in products.items():
+                    print(f"    {product_name}: starts at {times['start']:.2f}s, ends at {times['end']:.2f}s")
+
+    
+    def calculate_start_end_times(self, sorted_rw_assignments):
+        operation_start_times = {}
+        operation_end_times = {}
+
+        component_last_end_time = {}  # Tracks the last end time for each component across all RWs
+
+        for rw, components in sorted_rw_assignments.items():
+            for index, component in enumerate(components):
+                component_id = component['component_id']
+                duration = component['duration']
+
+                if index == 0:  # First component in the RW
+                    if component_id not in component_last_end_time:  # Not previously assigned
+                        start_time = 0
+                    else:  # Previously assigned
+                        start_time = component_last_end_time[component_id]
+                else:  # Not the first component in the RW
+                    previous_component_end_time = operation_end_times[(components[index - 1]['component_id'], rw)]
+                    if component_id not in component_last_end_time:  # Not previously assigned
+                        start_time = previous_component_end_time
+                    else:  # Previously assigned
+                        start_time = max(previous_component_end_time, component_last_end_time[component_id])
+
+                # Set start and end times
+                end_time = start_time + duration
+                operation_start_times[(component_id, rw)] = start_time
+                operation_end_times[(component_id, rw)] = end_time
+
+                # Update the last end time for this component
+                component_last_end_time[component_id] = end_time
+
+        return operation_start_times, operation_end_times
+    
+    def reprocessing_products(self, operation_end_times):
+
+        product_end_times = {}
+        for (component_id, rw), end_time in operation_end_times.items():
+            product_index = component_id[2:]  # Extract product index from component ID
+            if product_index not in product_end_times or end_time > product_end_times[product_index]:
+                product_end_times[product_index] = end_time
+
+        return product_end_times
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
