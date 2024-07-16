@@ -1,0 +1,189 @@
+
+import random
+from collections import defaultdict
+
+def generate_uniform_random(a, b):
+    return random.uniform(a, b)
+
+def generate_demand(fixed_price, a, b):
+    if a >= 0:
+        raise ValueError("La pente 'a' doit être négative.")
+    demand_quantity = int(a * fixed_price + b)
+    while demand_quantity <= 0:
+        demand_quantity = int(a * fixed_price + b)
+    return demand_quantity
+
+
+class ProductionData:
+    
+    def __init__(self): 
+        self.reprocessing_operations = {
+            "Cleaning": ["RW1", "RW2"],
+            "Inspection": ["RW3", "RW4", "RW5"],
+            "Repair": ["RW6"],
+            "Reconditioning": ["RW7", "RW8", "RW9"],
+        }
+        self.number_of_machines = {
+            "TW": 2,  # testing machines
+            "DW": 3,  # disassembling machines
+            "AW": 2,  # assembling machines
+            "RW": 9   # reprocessing machines
+        }
+
+        self.price_manufactured_products = random.sample(range(1, 5), 2)
+
+        # Génération des prix uniques pour les produits remanufacturés
+        self.price_remanufactured_products = random.sample(range(3, 5), 2)
+        while set(self.price_remanufactured_products) == set(self.price_manufactured_products):
+            self.price_remanufactured_products = random.sample(range(3, 5), 2)
+
+        # Génération des demandes en fonction des prix
+        manufactured_demands = [generate_demand(price, -1, 7) for price in self.price_manufactured_products]
+        remanufactured_demands = [generate_demand(price, -1, 7) for price in self.price_remanufactured_products]
+
+        # Génération des produits manufacturés et remanufacturés
+        self.manufactured_products = self.generate_products(self.price_manufactured_products, -1, 7)
+        self.remanufactured_products = self.generate_products(self.price_remanufactured_products, -1, 7)
+
+        # Sélection aléatoire d'un prix et demande pour les produits manufacturés
+        random_manufactured_price_index = random.randint(0, len(self.price_manufactured_products) - 1)
+        manprice = self.price_manufactured_products[random_manufactured_price_index]
+        mandemand = manufactured_demands[random_manufactured_price_index]
+
+        # Sélection aléatoire d'un prix et demande pour les produits remanufacturés
+        random_remanufactured_price_index = random.randint(0, len(self.price_remanufactured_products) - 1)
+        remanprice = self.price_remanufactured_products[random_remanufactured_price_index]
+        remandemand = remanufactured_demands[random_remanufactured_price_index]
+
+        self.man_product = {
+            "price": manprice,
+            "demand": mandemand
+        }
+
+        self.reman_product = {
+            "price": remanprice,
+            "demand": remandemand
+        }
+
+        self.manufacturing_duration = {
+            "testing": generate_uniform_random(1, 5),
+            "assembling": generate_uniform_random(2, 8)
+        }
+
+        self.manufacturing_cost = generate_uniform_random(1, 2)
+
+        self.Remantesting_duration = generate_uniform_random(1, 5)
+        self.quality_to_component_count = {"high": 1, "medium": 2, "low": 3}
+        self.remanufactured_product_qualities = self.generate_reman_qualities(self.reman_product['demand'])
+
+        self.disassembly_durations, self.assembling_durations, self.costreman = self.generate_remanufacturing_durations()
+        self.component_operations = self.generate_component_operations()
+
+        self.print_product_info()
+
+    def generate_products(self, prices, a, b):
+        products = []
+        for price in prices:
+            demand = generate_demand(price, a, b)
+            products.append({"price": price, "demand": demand})
+        return products
+
+    def generate_reman_qualities(self, demand):
+        qualities = list(self.quality_to_component_count.keys())
+        remanufactured_product_qualities = []
+        for _ in range(demand):
+            quality_level = random.choice(qualities)
+            remanufactured_product_qualities.append(quality_level)
+        return remanufactured_product_qualities
+
+    def generate_remanufacturing_durations(self):
+        disassembly_durations = []
+        assembling_durations = []
+        costreman = []
+        for quality in self.remanufactured_product_qualities:
+            if quality == "low":
+                disassembly_duration = generate_uniform_random(10, 11)
+                remanassassembly_duration = generate_uniform_random(10, 11)
+                cost = generate_uniform_random(10, 11)
+            elif quality == "medium":
+                disassembly_duration = generate_uniform_random(8, 9)
+                remanassassembly_duration = generate_uniform_random(8, 9)
+                cost = generate_uniform_random(8, 9)
+            else:
+                disassembly_duration = generate_uniform_random(3, 4)
+                remanassassembly_duration = generate_uniform_random(3, 4)
+                cost = generate_uniform_random(3, 4)
+            disassembly_durations.append(disassembly_duration)
+            assembling_durations.append(remanassassembly_duration)
+            costreman.append(cost)
+        return disassembly_durations, assembling_durations, costreman
+
+    def generate_component_operations(self):
+        operation_dict = {op: [] for op in self.reprocessing_operations.keys()}
+        component_operations = []
+        for product_index, quality in enumerate(self.remanufactured_product_qualities):
+            product_operations = []
+            for component_index in range(self.quality_to_component_count[quality]):
+                component_name = f"Composant_{component_index + 1}"
+                num_operations = random.randint(1, len(self.reprocessing_operations))
+                chosen_operations = random.sample(list(self.reprocessing_operations.keys()), num_operations)
+
+                component_operations_dict = {}
+                for operation_name in chosen_operations:
+                    operation_duration = generate_uniform_random(1, 10)
+                    component_operations_dict[operation_name] = operation_duration
+                    component_id = f"C{product_index + 1}{component_name.split('_')[1]}"
+                    operation_dict[operation_name].append({component_id: operation_duration})
+
+                product_operations.append({component_name: component_operations_dict})
+
+            component_operations.append({"product_index": product_index + 1, "operations": product_operations})
+
+        return component_operations
+
+    def Component_details(self):
+        component_details = {}
+        for idx, product in enumerate(self.component_operations, 1):
+            for component in product['operations']:
+                for component_name, operations in component.items():
+                    component_id = f"C{idx}{component_name.split('_')[1]}"
+                    component_details[component_id] = operations            
+        return component_details
+
+    def print_product_info(self):
+        print("\nListe des prix et demandes :")
+        
+        print("\nProduits manufacturés :")
+        print("  Liste des prix : ", [prod['price'] for prod in self.manufactured_products])
+        print("  Liste des demandes : ", [prod['demand'] for prod in self.manufactured_products])
+        print("  Prix sélectionné : ", self.man_product['price'])
+        print("  Demande sélectionnée : ", self.man_product['demand'])
+
+        print("\nProduits remanufacturés :")
+        print("  Liste des prix : ", [prod['price'] for prod in self.remanufactured_products])
+        print("  Liste des demandes : ", [prod['demand'] for prod in self.remanufactured_products])
+        print("  Prix sélectionné : ", self.reman_product['price'])
+        print("  Demande sélectionnée : ", self.reman_product['demand'])
+
+        print("\nInformations détaillées :")
+
+        print("\nProduits manufacturés :")
+        print(f"  Testing Duration: {self.manufacturing_duration['testing']:.2f}")
+        print(f"  Assembling Duration: {self.manufacturing_duration['assembling']:.2f}")
+        print(f"  Coût: {self.manufacturing_cost:.2f}")
+
+        print("\nProduits remanufacturés :")
+        print(f"  Testing Duration: {self.Remantesting_duration:.2f}")
+
+        for idx, quality in enumerate(self.remanufactured_product_qualities, 1):
+            print(f"\nProduit Reman {idx} de qualité {quality}:")
+            print(f"  Disassembling Duration: {self.disassembly_durations[idx - 1]:.2f}")
+            print(f"  Assembling Duration: {self.assembling_durations[idx - 1]:.2f}")
+            print(f"  Coût: {self.costreman[idx - 1]:.2f}")
+            print(f"  Opérations des composants :")
+            for component in self.component_operations[idx - 1]['operations']:
+                for component_name, ops in component.items():
+                    component_id = f"C{idx}{component_name.split('_')[1]}"
+                    print(f"    {component_id} : {', '.join([f'{op_name}: {duration:.2f}' for op_name, duration in ops.items()])}")
+
+# Assuming generate_demand and generate_uniform_random are defined elsewhere
