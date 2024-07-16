@@ -1,0 +1,78 @@
+from Dataproduct import ProductionData
+from chromosome import Chromosome
+
+
+production_data = ProductionData()
+print("\n---------------------------------------------------Ici les outputs de la Classe Chromosome-------------------------------------------------------------------------------------")
+
+
+chromosome = Chromosome(production_data)
+
+# Assign and process testing order
+products_m, products_r, random_numbers_table = chromosome.assign_testing_order()
+chromosome.final_sequencing(random_numbers_table, chromosome.testing_workstations, "TW")
+print("\n")
+
+# Assign and process assembling order
+products_m, products_r, random_numbers_table = chromosome.assign_assembling_order()
+chromosome.final_sequencing(random_numbers_table, chromosome.assembling_workstations, "AW")
+print("\n")
+
+# Assign and process disassembling order
+products, random_numbers_table = chromosome.assign_disassembling_order()
+chromosome.final_sequencing(random_numbers_table, chromosome.disassembly_workstations, "DW")
+print("\n")
+
+# chromosome.generate_component_operations()
+operation_dict, output_string = chromosome.assign_component_operations_to_rws()
+print(output_string)
+
+
+
+# Main section for printing workstation assignments with sorted random numbers
+workstation_assignments = chromosome.get_workstation_assignments()
+
+# Print or process workstation assignments
+for workstation_type, assignments_dict in workstation_assignments.items():
+    print(f"{workstation_type} Workstations:")
+    for workstation, products in assignments_dict.items():
+        print(f"  {workstation}:")
+        for product in products:
+            print(f"    {product['product']} with random number {product['random_number']:.2f}")
+
+
+print("*-------------------*")
+chromosome.calculate_profit()
+
+# Main section for printing component assignments with sorted random numbers
+sorted_assignments = chromosome.get_component_assignments()
+
+# Print or process component assignments
+for rw, components in sorted_assignments.items():
+    print(f"{rw}:")
+    for component in components:
+        print(f"  {component['component_id']} with random number {component['random_number']:.2f}")
+
+
+
+chromosome.calculate_operation_times()
+chromosome.print_operation_times()
+
+
+operation_start_times, operation_end_times = chromosome.calculate_start_end_times(sorted_assignments)
+
+# Print start and end times for each operation within each workstation
+for rw, components in sorted_assignments.items():
+        print(f"{rw}:")
+        for component in components:
+            component_id = component['component_id']
+            start_time = operation_start_times[(component_id, rw)]
+            end_time = operation_end_times[(component_id, rw)]
+            print(f"  {component_id} starts at t={start_time} and ends at t={end_time}")
+
+
+product_end_times = chromosome.reprocessing_products(operation_end_times)
+for product_index, finish_time in product_end_times.items():
+    print(f"\nProduct {product_index} finishes at t={finish_time}.")
+
+
